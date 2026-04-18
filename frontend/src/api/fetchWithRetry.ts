@@ -4,6 +4,7 @@ import { type ZodSchema } from "zod";
 import { ApiError } from "./errors";
 
 const MAX_RETRIES = 3;
+const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? "";
 const BACKOFF_MS = [1000, 2000, 4000] as const;
 
 // TODO: Replace console.error calls with OpenTelemetry spans when OTel SDK is wired up.
@@ -22,7 +23,7 @@ export async function fetchWithRetry<T>(
 
     let response: Response;
     try {
-      response = await fetch(url, init);
+      response = await fetch(API_BASE + url, init);
     } catch (networkErr) {
       const message = networkErr instanceof Error ? networkErr.message : String(networkErr);
       console.error("[fetchWithRetry] Network error", { url, attempt, error: message });
