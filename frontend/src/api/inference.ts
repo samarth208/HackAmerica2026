@@ -3,6 +3,8 @@
 import { ApiError } from "./errors";
 import { z } from "zod";
 
+const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? "";
+
 // ---------------------------------------------------------------------------
 // Zod schemas
 // ---------------------------------------------------------------------------
@@ -45,7 +47,7 @@ export async function* chat(
   modelId: string,
   signal?: AbortSignal
 ): AsyncGenerator<string> {
-  const response = await fetch("/api/inference/chat", {
+  const response = await fetch(API_BASE + "/api/inference/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ messages, modelId, stream: true }),
@@ -110,7 +112,7 @@ export async function* chat(
 // ---------------------------------------------------------------------------
 
 export async function getModels(): Promise<Model[]> {
-  const response = await fetch("/api/inference/models");
+  const response = await fetch(API_BASE + "/api/inference/models");
 
   if (!response.ok) {
     const text = await response.text();
@@ -125,7 +127,7 @@ export async function getModels(): Promise<Model[]> {
 // ---------------------------------------------------------------------------
 
 export async function getModelMetrics(modelId: string): Promise<ModelMetrics> {
-  const response = await fetch(`/api/inference/models/${modelId}/metrics`);
+  const response = await fetch(`${API_BASE}/api/inference/models/${modelId}/metrics`);
 
   if (!response.ok) {
     const text = await response.text();
@@ -140,7 +142,7 @@ export async function getModelMetrics(modelId: string): Promise<ModelMetrics> {
 // ---------------------------------------------------------------------------
 
 export async function cancelRequest(requestId: string): Promise<void> {
-  const response = await fetch(`/api/inference/requests/${requestId}`, {
+  const response = await fetch(`${API_BASE}/api/inference/requests/${requestId}`, {
     method: "DELETE",
   });
 
