@@ -1,0 +1,75 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: inference-log-producer
+  namespace: ml-platform
+  labels:
+    app: inference-log-producer
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: inference-log-producer
+  template:
+    metadata:
+      labels:
+        app: inference-log-producer
+    spec:
+      nodeSelector:
+        workload: inference
+      containers:
+        - name: inference-log-producer
+          image: registry.ml-platform.internal/inference-log-producer:latest
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "128Mi"
+            limits:
+              cpu: "100m"
+              memory: "256Mi"
+          env:
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              valueFrom:
+                configMapKeyRef:
+                  name: kafka-config
+                  key: bootstrap.servers
+            - name: KAFKA_SECURITY_PROTOCOL
+              valueFrom:
+                configMapKeyRef:
+                  name: kafka-config
+                  key: security.protocol
+            - name: VLLM_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: inference-producer-config
+                  key: vllm.host
+            - name: VLLM_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: inference-producer-config
+                  key: vllm.port
+            - name: MODEL_ID
+              valueFrom:
+                configMapKeyRef:
+                  name: inference-producer-config
+                  key: model.id
+            - name: MODEL_VERSION
+              valueFrom:
+                configMapKeyRef:
+                  name: inference-producer-config
+                  key: model.version
+            - name: DLQ_TOPIC
+              valueFrom:
+                configMapKeyRef:
+                  name: inference-producer-config
+                  key: dlq.topic
+            - name: SCHEMA_PATH
+              value: /schemas/inference_log_event.avsc
+          volumeMounts:
+            - name: schemas
+              mountPath: /schemas
+              readOnly: true
+      volumes:
+        - name: schemas
+          configMap:
+            name: avro-schemas

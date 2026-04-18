@@ -1,0 +1,70 @@
+# great_expectations.yml
+# Great Expectations project configuration for AMD ML platform Delta Lake tables.
+# All bucket names and credentials come from environment variables — no hardcoded values.
+
+config_version: 3.0
+
+datasources:
+  delta_lake_spark:
+    class_name: Datasource
+    execution_engine:
+      class_name: SparkDFExecutionEngine
+      module_name: great_expectations.execution_engine
+      spark_config:
+        spark.master: "${SPARK_MASTER}"
+        spark.sql.extensions: "io.delta.sql.DeltaSparkSessionExtension"
+        spark.sql.catalog.spark_catalog: "org.apache.spark.sql.delta.catalog.DeltaCatalog"
+    data_connectors:
+      bronze_gpu_telemetry:
+        class_name: RuntimeDataConnector
+        module_name: great_expectations.datasource.data_connector
+        batch_identifiers:
+          - run_id
+          - run_timestamp
+      silver_training_corpus:
+        class_name: RuntimeDataConnector
+        module_name: great_expectations.datasource.data_connector
+        batch_identifiers:
+          - run_id
+          - run_timestamp
+
+stores:
+  expectations_store:
+    class_name: ExpectationsStore
+    store_backend:
+      class_name: TupleS3StoreBackend
+      bucket: "${GE_BUCKET}"
+      prefix: "expectations/"
+  validations_store:
+    class_name: ValidationsStore
+    store_backend:
+      class_name: TupleS3StoreBackend
+      bucket: "${GE_BUCKET}"
+      prefix: "validations/"
+  evaluation_parameter_store:
+    class_name: EvaluationParameterStore
+  checkpoint_store:
+    class_name: CheckpointStore
+    store_backend:
+      class_name: TupleS3StoreBackend
+      bucket: "${GE_BUCKET}"
+      prefix: "checkpoints/"
+
+expectations_store_name: expectations_store
+validations_store_name: validations_store
+evaluation_parameter_store_name: evaluation_parameter_store
+
+data_docs_sites:
+  s3_site:
+    class_name: SiteBuilder
+    store_backend:
+      class_name: TupleS3StoreBackend
+      bucket: "${GE_DOCS_BUCKET}"
+      prefix: "data-docs/"
+    site_index_builder:
+      class_name: DefaultSiteIndexBuilder
+
+checkpoint_store_name: checkpoint_store
+
+anonymous_usage_statistics:
+  enabled: false

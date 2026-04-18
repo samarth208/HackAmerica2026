@@ -1,0 +1,19 @@
+project: amd_ml_platform
+provider: local
+
+registry:
+  registry_type: s3
+  path: s3://${FEAST_REGISTRY_BUCKET}/registry.pb
+
+online_store:
+  type: redis
+  connection_string: "${REDIS_HOST}:${REDIS_PORT}"
+  password: "${REDIS_PASSWORD}"
+
+offline_store:
+  type: feast.feature_store_components.DeltaLakeOfflineStore
+
+entity_key_serialization_version: 2
+
+flags:
+  alpha_features: false

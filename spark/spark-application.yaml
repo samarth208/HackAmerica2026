@@ -1,0 +1,162 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spark-defaults-conf
+  namespace: ml-platform
+data:
+  spark-defaults.conf: |
+    spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension
+    spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog
+    spark.sql.adaptive.enabled=true
+    spark.sql.adaptive.coalescePartitions.enabled=true
+    spark.sql.shuffle.partitions=2000
+    spark.delta.logRetentionDuration=interval 90 days
+    spark.delta.deletedFileRetentionDuration=interval 7 days
+    spark.hadoop.fs.s3a.endpoint=${CEPH_ENDPOINT}
+    spark.hadoop.fs.s3a.path.style.access=true
+    spark.hadoop.fs.s3a.connection.maximum=100
+    spark.hadoop.fs.s3a.fast.upload=true
+    spark.hadoop.fs.s3a.multipart.size=128M
+    spark.hadoop.fs.s3a.access.key=${S3A_ACCESS_KEY}
+    spark.hadoop.fs.s3a.secret.key=${S3A_SECRET_KEY}
+    spark.hadoop.fs.s3a.impl=org.apache.hadoop.fs.s3a.S3AFileSystem
+    spark.hadoop.fs.s3a.aws.credentials.provider=org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider
+    spark.serializer=org.apache.spark.serializer.KryoSerializer
+    spark.sql.parquet.compression.codec=zstd
+    spark.sql.parquet.mergeSchema=false
+    spark.databricks.delta.optimizeWrite.enabled=true
+    spark.databricks.delta.autoCompact.enabled=false
+
+---
+apiVersion: sparkoperator.k8s.io/v1beta2
+kind: SparkApplication
+metadata:
+  name: amd-ml-platform-spark
+  namespace: ml-platform
+  labels:
+    app: amd-ml-platform-spark
+    version: "3.5.1"
+    component: spark
+spec:
+  type: Python
+  pythonVersion: "3"
+  mode: cluster
+  image: registry.ml-platform.internal/spark-delta:3.5.1-delta3.2
+  imagePullPolicy: IfNotPresent
+  mainApplicationFile: local:///opt/spark/work-dir/main.py
+  sparkVersion: "3.5.1"
+
+  restartPolicy:
+    type: OnFailure
+    onFailureRetries: 3
+    onFailureRetryInterval: 30
+    onSubmissionFailureRetries: 3
+    onSubmissionFailureRetryInterval: 30
+
+  sparkConfigMap: spark-defaults-conf
+
+  volumes:
+    - name: spark-defaults-volume
+      configMap:
+        name: spark-defaults-conf
+
+  driver:
+    cores: 16
+    coreLimit: "16000m"
+    memory: "64g"
+    serviceAccount: spark
+    labels:
+      version: "3.5.1"
+      role: driver
+    volumeMounts:
+      - name: spark-defaults-volume
+        mountPath: /opt/spark/conf/spark-defaults.conf
+        subPath: spark-defaults.conf
+        readOnly: true
+    envFrom:
+      - secretRef:
+          name: s3a-credentials
+      - secretRef:
+          name: ceph-config
+    env:
+      - name: S3A_ACCESS_KEY
+        valueFrom:
+          secretKeyRef:
+            name: s3a-credentials
+            key: access-key
+      - name: S3A_SECRET_KEY
+        valueFrom:
+          secretKeyRef:
+            name: s3a-credentials
+            key: secret-key
+      - name: CEPH_ENDPOINT
+        valueFrom:
+          secretKeyRef:
+            name: ceph-config
+            key: endpoint
+    podSecurityContext:
+      runAsNonRoot: true
+      runAsUser: 185
+      fsGroup: 185
+    tolerations:
+      - key: "node-role"
+        operator: "Equal"
+        value: "spark-driver"
+        effect: "NoSchedule"
+
+  executor:
+    cores: 8
+    coreLimit: "8000m"
+    memory: "32g"
+    labels:
+      version: "3.5.1"
+      role: executor
+    volumeMounts:
+      - name: spark-defaults-volume
+        mountPath: /opt/spark/conf/spark-defaults.conf
+        subPath: spark-defaults.conf
+        readOnly: true
+    envFrom:
+      - secretRef:
+          name: s3a-credentials
+      - secretRef:
+          name: ceph-config
+    env:
+      - name: S3A_ACCESS_KEY
+        valueFrom:
+          secretKeyRef:
+            name: s3a-credentials
+            key: access-key
+      - name: S3A_SECRET_KEY
+        valueFrom:
+          secretKeyRef:
+            name: s3a-credentials
+            key: secret-key
+      - name: CEPH_ENDPOINT
+        valueFrom:
+          secretKeyRef:
+            name: ceph-config
+            key: endpoint
+    podSecurityContext:
+      runAsNonRoot: true
+      runAsUser: 185
+      fsGroup: 185
+    tolerations:
+      - key: "node-role"
+        operator: "Equal"
+        value: "spark-executor"
+        effect: "NoSchedule"
+
+  dynamicAllocation:
+    enabled: true
+    initialExecutors: 10
+    minExecutors: 10
+    maxExecutors: 100
+    shuffleTrackingTimeout: 300
+
+  monitoring:
+    exposeDriverMetrics: true
+    exposeExecutorMetrics: true
+    prometheus:
+      jmxExporterJar: /prometheus/jmx_prometheus_javaagent.jar
+      port: 8090

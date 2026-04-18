@@ -1,0 +1,28 @@
+{
+  "type": "record",
+  "name": "InferenceLogEvent",
+  "namespace": "com.platform.inference",
+  "doc": "Per-request inference log event from the serving layer.",
+  "fields": [
+    {"name": "request_id", "type": "string", "doc": "Unique identifier for the inference request"},
+    {"name": "model_id", "type": "string", "doc": "Identifier of the model serving the request"},
+    {"name": "model_version", "type": "string", "doc": "Version string of the deployed model"},
+    {"name": "timestamp_ms", "type": {"type": "long", "logicalType": "timestamp-millis"}, "doc": "Unix epoch milliseconds when the request was received"},
+    {"name": "prompt_tokens", "type": "int", "doc": "Number of tokens in the input prompt"},
+    {"name": "completion_tokens", "type": "int", "doc": "Number of tokens generated in the completion"},
+    {"name": "latency_ms", "type": "long", "doc": "Total request latency in milliseconds"},
+    {"name": "ttft_ms", "type": "long", "doc": "Time to first token in milliseconds"},
+    {
+      "name": "status",
+      "type": {
+        "type": "enum",
+        "name": "InferenceStatus",
+        "namespace": "com.platform.inference",
+        "symbols": ["SUCCESS", "TIMEOUT", "ERROR", "CANCELLED"]
+      },
+      "doc": "Terminal status of the inference request"
+    },
+    {"name": "error_code", "type": ["null", "string"], "default": null, "doc": "Application-level error code if status is ERROR, null otherwise"},
+    {"name": "user_id", "type": "string", "doc": "SHA-256 hash of raw user_id. Raw PII never stored."}
+  ]
+}

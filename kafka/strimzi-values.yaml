@@ -1,0 +1,228 @@
+# Strimzi Kafka Operator — Production Kafka Cluster
+# Deployed via Strimzi Helm chart; this file is the Kafka CRD manifest.
+# Apply with: kubectl apply -f strimzi-values.yaml -n kafka
+#
+# NOTES:
+#   - Audit topic retention (30 days / 2592000000 ms) is set per-topic in topics.yaml,
+#     NOT as a global default here. The global default below is 7 days.
+#   - Telemetry topic compression.type=lz4 is set per-topic in topics.yaml,
+#     NOT here. The global default below is zstd.
+apiVersion: kafka.strimzi.io/v1beta2
+kind: Kafka
+metadata:
+  name: amd-ml-kafka
+  namespace: kafka
+  labels:
+    app: amd-ml-kafka
+    environment: production
+spec:
+  kafka:
+    version: "3.7.0"
+    replicas: 3
+
+    # -------------------------------------------------------------------------
+    # Listeners
+    # -------------------------------------------------------------------------
+    listeners:
+      # Internal plaintext listener for intra-cluster broker communication
+      - name: plain
+        port: 9092
+        type: internal
+        tls: false
+      # External TLS listener for clients outside the cluster
+      - name: tls
+        port: 9093
+        type: internal
+        tls: true
+        authentication:
+          type: tls
+
+    # -------------------------------------------------------------------------
+    # Broker configuration
+    # -------------------------------------------------------------------------
+    config:
+      # Replication and durability
+      default.replication.factor: 3
+      min.insync.replicas: 2
+      offsets.topic.replication.factor: 3
+      transaction.state.log.replication.factor: 3
+      transaction.state.log.min.isr: 2
+
+      # Log retention — global default 7 days
+      # Per-topic overrides (e.g. audit = 30 days) are set in topics.yaml
+      log.retention.ms: 604800000
+      log.retention.check.interval.ms: 300000
+
+      # Compression — global default zstd
+      # Per-topic override for telemetry (lz4) is set in topics.yaml
+      compression.type: "zstd"
+
+      # Message size limits
+      max.message.bytes: 10485760
+      replica.fetch.max.bytes: 10485760
+      message.max.bytes: 10485760
+
+      # Inter-broker protocol
+      inter.broker.listener.name: plain
+      inter.broker.protocol.version: "3.7"
+      log.message.format.version: "3.7"
+
+      # Performance tuning
+      num.network.threads: 8
+      num.io.threads: 16
+      num.replica.fetchers: 4
+      socket.send.buffer.bytes: 1048576
+      socket.receive.buffer.bytes: 1048576
+      socket.request.max.bytes: 104857600
+
+      # Log segment and cleanup
+      log.segment.bytes: 1073741824
+      log.cleanup.policy: "delete"
+      log.cleaner.enable: true
+      log.cleaner.threads: 2
+
+      # Group coordinator and consumer settings
+      group.initial.rebalance.delay.ms: 3000
+      auto.create.topics.enable: false
+      delete.topic.enable: true
+
+    # -------------------------------------------------------------------------
+    # JVM options — 6 GB heap per broker
+    # -------------------------------------------------------------------------
+    jvmOptions:
+      -Xms: "6144m"
+      -Xmx: "6144m"
+      gcLoggingEnabled: true
+      javaSystemProperties:
+        - name: "com.sun.jndi.rmi.object.trustURLCodebase"
+          value: "false"
+
+    # -------------------------------------------------------------------------
+    # Persistent storage — 2 TB per broker on ceph-block
+    # -------------------------------------------------------------------------
+    storage:
+      type: persistent-claim
+      size: 2Ti
+      storageClass: ceph-block
+      deleteClaim: false
+
+    # -------------------------------------------------------------------------
+    # Node scheduling — dedicated Kafka nodes
+    # -------------------------------------------------------------------------
+    template:
+      pod:
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+                - matchExpressions:
+                    - key: role
+                      operator: In
+                      values:
+                        - kafka
+          podAntiAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              - labelSelector:
+                  matchLabels:
+                    strimzi.io/name: amd-ml-kafka-kafka
+                topologyKey: kubernetes.io/hostname
+        tolerations:
+          - key: "role"
+            operator: "Equal"
+            value: "kafka"
+            effect: "NoSchedule"
+    resources:
+      requests:
+        memory: "12Gi"
+        cpu: "4"
+      limits:
+        memory: "16Gi"
+        cpu: "8"
+
+    # -------------------------------------------------------------------------
+    # Prometheus metrics via JMX exporter
+    # -------------------------------------------------------------------------
+    metricsConfig:
+      type: jmxPrometheusExporter
+      valueFrom:
+        configMapKeyRef:
+          name: kafka-metrics
+          key: kafka-metrics-config.yml
+
+  # ---------------------------------------------------------------------------
+  # ZooKeeper — 3 nodes
+  # ---------------------------------------------------------------------------
+  zookeeper:
+    replicas: 3
+
+    storage:
+      type: persistent-claim
+      size: 100Gi
+      storageClass: ceph-block
+      deleteClaim: false
+
+    config:
+      tickTime: 2000
+      initLimit: 10
+      syncLimit: 5
+      maxClientCnxns: 60
+      autopurge.snapRetainCount: 5
+      autopurge.purgeInterval: 24
+
+    jvmOptions:
+      -Xms: "2048m"
+      -Xmx: "2048m"
+
+    resources:
+      requests:
+        memory: "4Gi"
+        cpu: "1"
+      limits:
+        memory: "4Gi"
+        cpu: "2"
+
+    template:
+      pod:
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+                - matchExpressions:
+                    - key: role
+                      operator: In
+                      values:
+                        - kafka
+          podAntiAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              - labelSelector:
+                  matchLabels:
+                    strimzi.io/name: amd-ml-kafka-zookeeper
+                topologyKey: kubernetes.io/hostname
+
+    metricsConfig:
+      type: jmxPrometheusExporter
+      valueFrom:
+        configMapKeyRef:
+          name: kafka-metrics
+          key: zookeeper-metrics-config.yml
+
+  # ---------------------------------------------------------------------------
+  # Entity operator — manages KafkaTopic and KafkaUser CRDs
+  # ---------------------------------------------------------------------------
+  entityOperator:
+    topicOperator:
+      resources:
+        requests:
+          memory: "256Mi"
+          cpu: "100m"
+        limits:
+          memory: "512Mi"
+          cpu: "500m"
+    userOperator:
+      resources:
+        requests:
+          memory: "256Mi"
+          cpu: "100m"
+        limits:
+          memory: "512Mi"
+          cpu: "500m"

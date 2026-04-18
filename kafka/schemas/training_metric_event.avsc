@@ -1,0 +1,17 @@
+{
+  "type": "record",
+  "name": "TrainingMetricEvent",
+  "namespace": "com.platform.training",
+  "doc": "Per-step training metrics emitted by the distributed training loop.",
+  "fields": [
+    {"name": "run_id", "type": "string", "doc": "Unique identifier for the training run"},
+    {"name": "step", "type": "int", "doc": "Global optimizer step number"},
+    {"name": "timestamp_ms", "type": {"type": "long", "logicalType": "timestamp-millis"}, "doc": "Unix epoch milliseconds when the step completed"},
+    {"name": "train_loss", "type": "float", "doc": "Training loss at this step"},
+    {"name": "grad_norm", "type": "float", "doc": "Global gradient norm before clipping"},
+    {"name": "learning_rate", "type": "float", "doc": "Effective learning rate at this step"},
+    {"name": "tokens_per_sec", "type": "float", "doc": "Aggregate tokens processed per second across all devices"},
+    {"name": "mfu_pct", "type": "float", "doc": "Model FLOP Utilization as a percentage of peak theoretical throughput"},
+    {"name": "gpu_memory_per_device_gb", "type": "float", "doc": "Peak GPU memory allocated per device in GB"}
+  ]
+}

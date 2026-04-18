@@ -1,0 +1,225 @@
+# Strimzi KafkaTopic CRDs — AMD ML Platform
+# All topics belong to cluster: amd-ml-kafka
+# Apply with: kubectl apply -f topics.yaml -n kafka
+#
+# Partition sizing rationale:
+#   Target max lag < 10s at peak throughput.
+#   Each partition consumer assumed ~500 msg/s sustained read capacity.
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Topic: raw.gpu.telemetry
+# Throughput: 4000 msg/s, avg 512 bytes (~2 MB/s ingress)
+# Consumer groups: flink-alert-enrichment, delta-sink-gpu
+# Partitions: 64 — allows 8 parallel consumers per group with headroom
+# Retention: 1 day (high-volume, processed downstream quickly)
+# Compression: lz4 (low-latency GPU metrics; overrides global default zstd)
+# ---------------------------------------------------------------------------
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: raw.gpu.telemetry
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: amd-ml-kafka
+spec:
+  partitions: 64
+  replicas: 3
+  config:
+    retention.ms: "86400000"
+    compression.type: "lz4"
+    max.message.bytes: "1048576"
+    min.insync.replicas: "2"
+    cleanup.policy: "delete"
+    segment.ms: "3600000"
+
+---
+# ---------------------------------------------------------------------------
+# Topic: raw.kubernetes.events
+# Throughput: 200 msg/s, avg 2KB (~400 KB/s ingress)
+# Consumer groups: flink-alert-enrichment, ontology-sync
+# Partitions: 16 — adequate for 200 msg/s; 2 consumer groups run in parallel
+# Retention: 7 days (default cluster retention)
+# Compression: zstd (default)
+# ---------------------------------------------------------------------------
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: raw.kubernetes.events
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: amd-ml-kafka
+spec:
+  partitions: 16
+  replicas: 3
+  config:
+    retention.ms: "604800000"
+    compression.type: "zstd"
+    max.message.bytes: "10485760"
+    min.insync.replicas: "2"
+    cleanup.policy: "delete"
+    segment.ms: "3600000"
+
+---
+# ---------------------------------------------------------------------------
+# Topic: raw.model.inference.logs
+# Throughput: 2000 msg/s, avg 256 bytes (~512 KB/s ingress)
+# Consumer groups: delta-sink-inference, metrics-aggregator
+# Partitions: 32 — supports 2 consumer groups, 16 partitions each
+# Retention: 7 days
+# Compression: lz4 (latency-sensitive inference path)
+# ---------------------------------------------------------------------------
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: raw.model.inference.logs
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: amd-ml-kafka
+spec:
+  partitions: 32
+  replicas: 3
+  config:
+    retention.ms: "604800000"
+    compression.type: "lz4"
+    max.message.bytes: "10485760"
+    min.insync.replicas: "2"
+    cleanup.policy: "delete"
+    segment.ms: "3600000"
+
+---
+# ---------------------------------------------------------------------------
+# Topic: raw.training.metrics
+# Throughput: 50 msg/s, avg 1KB (~50 KB/s ingress)
+# Consumer groups: delta-sink-training, wandb-bridge, feature-store-sink
+# Partitions: 8 — 3 consumer groups, low volume; 8 partitions sufficient
+# Retention: 90 days (7776000000 ms) — long-term training history
+# Compression: zstd (good ratio for structured metric payloads)
+# ---------------------------------------------------------------------------
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: raw.training.metrics
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: amd-ml-kafka
+spec:
+  partitions: 8
+  replicas: 3
+  config:
+    retention.ms: "7776000000"
+    compression.type: "zstd"
+    max.message.bytes: "10485760"
+    min.insync.replicas: "2"
+    cleanup.policy: "delete"
+    segment.ms: "86400000"
+
+---
+# ---------------------------------------------------------------------------
+# Topic: raw.alerts.inbound
+# Throughput: 10 msg/s, avg 4KB (~40 KB/s ingress)
+# Consumer groups: flink-alert-enrichment, ontology-sync-alerts
+# Partitions: 16 — over-provisioned for burst alert storms; key-partitioned by alert type
+# Retention: 30 days (2592000000 ms) — audit requirement
+# Compression: zstd
+# ---------------------------------------------------------------------------
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: raw.alerts.inbound
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: amd-ml-kafka
+spec:
+  partitions: 16
+  replicas: 3
+  config:
+    retention.ms: "2592000000"
+    compression.type: "zstd"
+    max.message.bytes: "10485760"
+    min.insync.replicas: "2"
+    cleanup.policy: "delete"
+    segment.ms: "86400000"
+
+---
+# ---------------------------------------------------------------------------
+# Topic: processed.alerts.enriched
+# Throughput: 10 msg/s, avg 8KB (~80 KB/s ingress)
+# Consumer groups: ontology-sync-alerts, frontend-websocket, aip-agent-context
+# Partitions: 16 — 3 downstream consumers; partitions allow independent lag tracking
+# Retention: 30 days (2592000000 ms) — enriched alerts kept for incident review
+# Compression: zstd (larger enriched payloads benefit from better ratio)
+# ---------------------------------------------------------------------------
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: processed.alerts.enriched
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: amd-ml-kafka
+spec:
+  partitions: 16
+  replicas: 3
+  config:
+    retention.ms: "2592000000"
+    compression.type: "zstd"
+    max.message.bytes: "10485760"
+    min.insync.replicas: "2"
+    cleanup.policy: "delete"
+    segment.ms: "86400000"
+
+---
+# ---------------------------------------------------------------------------
+# Topic: processed.training.corpus
+# Throughput: 500 msg/s, avg 4KB (~2 MB/s ingress)
+# Consumer groups: delta-sink-corpus, quality-monitor
+# Partitions: 32 — key-compacted corpus; parallelism for large-payload sinks
+# Retention: 90 days (7776000000 ms) with compaction — latest value per key kept indefinitely
+# Compression: zstd (best ratio for large structured corpus records)
+# cleanup.policy=compact: retains latest record per message key (corpus deduplication)
+# ---------------------------------------------------------------------------
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: processed.training.corpus
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: amd-ml-kafka
+spec:
+  partitions: 32
+  replicas: 3
+  config:
+    retention.ms: "7776000000"
+    cleanup.policy: "compact"
+    compression.type: "zstd"
+    max.message.bytes: "10485760"
+    min.insync.replicas: "2"
+    min.cleanable.dirty.ratio: "0.1"
+    segment.ms: "86400000"
+
+---
+# ---------------------------------------------------------------------------
+# Topic: ontology.sync.events
+# Throughput: 100 msg/s, avg 2KB (~200 KB/s ingress)
+# Consumer groups: ontology-sync-worker, audit-logger
+# Partitions: 8 — low volume; 2 consumer groups, 4 partitions each
+# Retention: 7 days — sync events are idempotent; replayed from source on failure
+# Compression: zstd
+# ---------------------------------------------------------------------------
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: ontology.sync.events
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: amd-ml-kafka
+spec:
+  partitions: 8
+  replicas: 3
+  config:
+    retention.ms: "604800000"
+    compression.type: "zstd"
+    max.message.bytes: "10485760"
+    min.insync.replicas: "2"
+    cleanup.policy: "delete"
+    segment.ms: "3600000"

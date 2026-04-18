@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: gpu-telemetry-producer
+  namespace: ml-platform
+  labels:
+    app: gpu-telemetry-producer
+spec:
+  selector:
+    matchLabels:
+      app: gpu-telemetry-producer
+  template:
+    metadata:
+      labels:
+        app: gpu-telemetry-producer
+    spec:
+      nodeSelector:
+        amd.com/gpu: mi300x
+      tolerations:
+        - key: amd.com/gpu
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: gpu-telemetry-producer
+          image: registry.ml-platform.internal/gpu-telemetry-producer:latest
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "128Mi"
+            limits:
+              cpu: "100m"
+              memory: "256Mi"
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              valueFrom:
+                configMapKeyRef:
+                  name: kafka-config
+                  key: bootstrap.servers
+            - name: KAFKA_SECURITY_PROTOCOL
+              valueFrom:
+                configMapKeyRef:
+                  name: kafka-config
+                  key: security.protocol
+            - name: KAFKA_SSL_CA_LOCATION
+              valueFrom:
+                configMapKeyRef:
+                  name: kafka-config
+                  key: ssl.ca.location
+                  optional: true
+            - name: SCHEMA_PATH
+              value: /schemas/gpu_telemetry_event.avsc
+          volumeMounts:
+            - name: schemas
+              mountPath: /schemas
+              readOnly: true
+            - name: rocm-smi
+              mountPath: /opt/rocm/bin/rocm-smi
+              readOnly: true
+      volumes:
+        - name: schemas
+          configMap:
+            name: avro-schemas
+        - name: rocm-smi
+          hostPath:
+            path: /opt/rocm/bin/rocm-smi
+            type: File

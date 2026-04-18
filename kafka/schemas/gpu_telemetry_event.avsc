@@ -1,0 +1,18 @@
+{
+  "type": "record",
+  "name": "GpuTelemetryEvent",
+  "namespace": "com.platform.gpu",
+  "doc": "Per-device GPU telemetry from ROCm SMI. Produced every 15 seconds per device.",
+  "fields": [
+    {"name": "node_id", "type": "string", "doc": "Kubernetes node name"},
+    {"name": "device_id", "type": "string", "doc": "ROCm device identifier, e.g. card0"},
+    {"name": "timestamp_ms", "type": {"type": "long", "logicalType": "timestamp-millis"}, "doc": "Unix epoch milliseconds"},
+    {"name": "utilization_pct", "type": "float", "doc": "GPU compute utilization 0.0-100.0"},
+    {"name": "memory_used_gb", "type": "float", "doc": "VRAM used in GB"},
+    {"name": "memory_total_gb", "type": "float", "doc": "Total VRAM in GB"},
+    {"name": "temperature_c", "type": "float", "doc": "Junction temperature in Celsius"},
+    {"name": "power_draw_w", "type": "float", "doc": "Current power draw in watts"},
+    {"name": "hbm_bandwidth_gbps", "type": "float", "default": -1.0, "doc": "HBM bandwidth utilization GB/s. -1.0 if not available."},
+    {"name": "pcie_bandwidth_gbps", "type": "float", "default": -1.0, "doc": "PCIe bandwidth utilization GB/s. -1.0 if not available."}
+  ]
+}
