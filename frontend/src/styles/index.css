@@ -1,0 +1,20 @@
+@import 'tailwindcss';
+
+:root {
+  --aegis-bg: #0a0e1a;
+  --aegis-panel: #0f1729;
+  --aegis-threat-high: #dc2626;
+  --aegis-threat-med: #f59e0b;
+  --aegis-crew-active: #10b981;
+  --aegis-crew-enroute: #3b82f6;
+  --aegis-crew-standby: #6b7280;
+  --aegis-infra: #8b5cf6;
+  --aegis-text: #f1f5f9;
+  --aegis-text-muted: #94a3b8;
+}
+
+body {
+  background-color: var(--aegis-bg);
+  color: var(--aegis-text);
+  font-family: 'Inter', system-ui, sans-serif;
+}
